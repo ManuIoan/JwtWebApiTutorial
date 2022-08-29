@@ -35,16 +35,10 @@ namespace JwtWebApiTutorial.Controllers
             return Ok(userName);
         }
         [HttpGet("{id}")]
-        public ActionResult<Addresses> GetAll(int id)
+        public ActionResult<Accounts> GetAll(int id)
         {
-            Addresses result = new Addresses();
-            result = _context.Addresses.Where(e => e.id == id).FirstOrDefault();
-
-            result.UAT.id = result.id;//nu este o idee buna sa le iei asa
-
-            UAT ut = _context.UAT.Where(e => e.id == id).FirstOrDefault();
-            result.UAT.Name = ut.Name;
-
+            Accounts result = new Accounts();
+            result = _context.Accounts.Where(e => e.id == id).FirstOrDefault();
 
             return Ok(result);
 
@@ -130,7 +124,7 @@ namespace JwtWebApiTutorial.Controllers
             */
 
 
-            tok.token = CreateToken(lc.name);
+            tok.token = CreateToken(acc.id);
             tok.error = "";
             var refreshToken = GenerateRefreshToken();
             SetRefreshToken(refreshToken);
@@ -185,7 +179,7 @@ namespace JwtWebApiTutorial.Controllers
                 return Unauthorized("Token expired.");
             }
 
-            string token = CreateToken(user.Username);
+            string token = CreateToken(1);
            
             var newRefreshToken = GenerateRefreshToken();
             SetRefreshToken(newRefreshToken);
@@ -219,11 +213,11 @@ namespace JwtWebApiTutorial.Controllers
             user.TokenExpires = newRefreshToken.Expires;
         }
 
-        private string CreateToken(string name)
+        private string CreateToken(int id)
         {
             List<Claim> claims = new List<Claim>
             {
-                new Claim(ClaimTypes.Name, name),
+                new Claim("id", id.ToString())
                 //new Claim(ClaimTypes.Role, "Admin")
             };
 
