@@ -1,10 +1,13 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using JwtWebApiTutorial.Data;
+using JwtWebApiTutorial.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace JwtWebApiTutorial.Controllers
 {
@@ -15,11 +18,14 @@ namespace JwtWebApiTutorial.Controllers
         public static User user = new User();
         private readonly IConfiguration _configuration;
         private readonly IUserService _userService;
+        private readonly DataContext _context;
 
-        public AuthController(IConfiguration configuration, IUserService userService)
+        public AuthController(IConfiguration configuration, IUserService userService, DataContext context)
         {
             _configuration = configuration;
             _userService = userService;
+            _context = context;
+
         }
 
         [HttpGet, Authorize]
@@ -28,38 +34,141 @@ namespace JwtWebApiTutorial.Controllers
             var userName = _userService.GetMyName();
             return Ok(userName);
         }
-
-        [HttpPost("register")]
-        public async Task<ActionResult<User>> Register(UserDto request)
+        [HttpGet("{id}")]
+        public ActionResult<Addresses> GetAll(int id)
         {
-            CreatePasswordHash(request.Password, out byte[] passwordHash, out byte[] passwordSalt);
+            Addresses result = new Addresses();
+            result = _context.Addresses.Where(e => e.id == id).FirstOrDefault();
 
-            user.Username = request.Username;
-            user.PasswordHash = passwordHash;
-            user.PasswordSalt = passwordSalt;
+            result.UAT.id = result.id;//nu este o idee buna sa le iei asa
 
-            return Ok(user);
+            UAT ut = _context.UAT.Where(e => e.id == id).FirstOrDefault();
+            result.UAT.Name = ut.Name;
+
+
+            return Ok(result);
+
+
+
         }
 
-        [HttpPost("login")]
-        public async Task<ActionResult<string>> Login(UserDto request)
+        [HttpPost("register")]
+        public async Task<ActionResult<User>> Register(Accounts request)
         {
-            if (user.Username != request.Username)
+
+            if (_context.Accounts == null)
             {
-                return BadRequest("User not found.");
+                return Problem("Entity set 'DataContext.Persons'  is null.");
             }
+            _context.Accounts.Add(request);
 
-            if (!VerifyPasswordHash(request.Password, user.PasswordHash, user.PasswordSalt))
+            //user.Username = request.Username;
+            var psH = Hashing(request.Password);
+
+            request.Password = psH;
+            /*user.PasswordSalt = passwordSalt;
+               {
+                  "id": 0,
+                  "nume": "John",
+                  "prenume": "Manu",
+                  "email": "sdsds",
+                  "nume_firma": "sdsds",
+                  "username": "dsdsds",
+                  "pass": "fffff",
+                  "tip_pachet": "sdsdsd"
+                }
+           */
+            await _context.SaveChangesAsync();
+            return Ok(request);
+        }
+
+        
+
+        public class LoginClass{
+            public string name { get; set; }
+            public string pass { get; set; }
+
+
+            }
+        public class Token
+        {
+            public string token { get; set; }
+            public string error { get; set; }
+            
+
+
+        }
+        [HttpPost("login")]
+        public async Task<ActionResult<LoginClass>> Login(LoginClass lc)
+        {
+
+            Token tok = new Token();
+            Accounts acc = _context.Accounts.Where(s => s.Username == lc.name).FirstOrDefault();
+            if (acc == null)
             {
-                return BadRequest("Wrong password.");
+                
+                tok.token = "";
+                tok.error = "User not found.";
+                return Ok(tok);
             }
+            if (Hashing(lc.pass) != acc.Password)
+            {
 
-            string token = CreateToken(user);
+                tok.token = "";
+                tok.error = "Wrong password.";
+                return Ok(tok);
+            }
+            /* if (user.Username != request.Username)
+             {
+                 return BadRequest("User not found.");
+             }
+             var passHashed = Hashing(pass);
+             if (!VerifyPasswordHash(request.Password, user.PasswordHash, user.PasswordSalt))
+             {
+                 return BadRequest("Wrong password.");
+             }
+            */
 
+
+            tok.token = CreateToken(lc.name);
+            tok.error = "";
             var refreshToken = GenerateRefreshToken();
             SetRefreshToken(refreshToken);
+            
 
-            return Ok(token);
+            return Ok(tok);
+        }
+        [HttpPost("UAT")]
+        public async Task<ActionResult<User>> changeUat(UAT request)
+        {
+            if (_context.Accounts == null)
+            {
+                return Problem("Entity set 'DataContext.Persons'  is null.");
+            }
+            _context.UAT.Add(request);
+            await _context.SaveChangesAsync();
+
+            return Ok(request);
+        }
+
+
+        [HttpPost("Address")]
+        public async Task<ActionResult<User>> changeAddress(string address, int uaTiD)
+        {
+            if (_context.Accounts == null)
+            {
+                return Problem("Entity set 'DataContext.Persons'  is null.");
+            }
+            Addresses address2 = new Addresses();
+            address2.UATiD = uaTiD;
+            address2.Address = address;
+            
+            UAT ut    = _context.UAT.Where(s => s.id == uaTiD).FirstOrDefault();
+           
+            _context.Addresses.Add(address2);
+            await _context.SaveChangesAsync();
+
+            return Ok(ut);
         }
 
         [HttpPost("refresh-token")]
@@ -76,10 +185,11 @@ namespace JwtWebApiTutorial.Controllers
                 return Unauthorized("Token expired.");
             }
 
-            string token = CreateToken(user);
+            string token = CreateToken(user.Username);
+           
             var newRefreshToken = GenerateRefreshToken();
             SetRefreshToken(newRefreshToken);
-
+           
             return Ok(token);
         }
 
@@ -109,12 +219,12 @@ namespace JwtWebApiTutorial.Controllers
             user.TokenExpires = newRefreshToken.Expires;
         }
 
-        private string CreateToken(User user)
+        private string CreateToken(string name)
         {
             List<Claim> claims = new List<Claim>
             {
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Role, "Admin")
+                new Claim(ClaimTypes.Name, name),
+                //new Claim(ClaimTypes.Role, "Admin")
             };
 
             var key = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(
@@ -148,6 +258,25 @@ namespace JwtWebApiTutorial.Controllers
                 var computedHash = hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(password));
                 return computedHash.SequenceEqual(passwordHash);
             }
+        }
+
+        private string Hashing(string pass)
+        {
+            var sha = SHA256.Create();
+            var asByteArray = Encoding.Default.GetBytes(pass);
+            var hashedPassword = sha.ComputeHash(asByteArray);
+            return Convert.ToBase64String(hashedPassword);
+
+ 
+        }
+        private string unHashing(string base64)
+        {
+            var b64 = Convert.FromBase64String(base64);
+            var result = Encoding.Default.GetString(b64);
+            return result;
+
+
+           
         }
     }
 }
