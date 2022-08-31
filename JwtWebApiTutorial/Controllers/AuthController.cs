@@ -34,15 +34,11 @@ namespace JwtWebApiTutorial.Controllers
             var userName = _userService.GetMyName();
             return Ok(userName);
         }
-        [HttpGet("{id}")]
-        public ActionResult<Accounts> GetAll(int id)
+        [HttpGet("getAddresses")]
+        public ActionResult<Accounts> GetAllAddresses()
         {
-            Accounts result = new Accounts();
-            result = _context.Accounts.Where(e => e.id == id).FirstOrDefault();
-
-            return Ok(result);
-
-
+         
+            return Ok(_context.Addresses);
 
         }
 
@@ -73,7 +69,16 @@ namespace JwtWebApiTutorial.Controllers
                 }
            */
             await _context.SaveChangesAsync();
-            return Ok(request);
+
+            Token tok = new Token();
+            tok.token = CreateToken(request.id);
+            tok.error = "";
+            var refreshToken = GenerateRefreshToken();
+            SetRefreshToken(refreshToken);
+
+
+            return Ok(tok);
+          
         }
 
         
@@ -132,7 +137,27 @@ namespace JwtWebApiTutorial.Controllers
 
             return Ok(tok);
         }
-        [HttpPost("UAT")]
+        public class Data
+        {
+            public string nume { get; set; }
+            public string prenume { get; set; }
+            public string adresa { get; set; }
+        }
+
+        [HttpPost("getData")]
+
+        public async Task<ActionResult<Data>> GetData(int id)
+        {
+            Data dt = new Data();
+            Accounts acc = _context.Accounts.Where(s => s.id == id).FirstOrDefault();
+            dt.nume = acc.LastName;
+            dt.prenume = acc.FirstName;
+            dt.adresa = acc.Address;
+            return Ok(dt);
+        }
+
+
+            [HttpPost("UAT")]
         public async Task<ActionResult<User>> changeUat(UAT request)
         {
             if (_context.Accounts == null)
